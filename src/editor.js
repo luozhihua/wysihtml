@@ -39,6 +39,8 @@
     style:                true,
     // Id of the toolbar element, pass falsey value if you don't want any toolbar logic
     toolbar:              undef,
+    // Automaticly open the dialog of command when cursor matched the block which is a command controled.
+    autoOpenDialog:       true,
     // Whether toolbar is displayed after init by script automatically.
     // Can be set to false if toolobar is set to display only on editable area focus
     showToolbarAfterInit: true,
@@ -80,7 +82,7 @@
       uneditableContainer: "wysihtml5-uneditable-container"
     },
     // Browsers that support copied source handling will get a marking of the origin of the copied source (for determinig code cleanup rules on paste)
-    // Also copied source is based directly on selection - 
+    // Also copied source is based directly on selection -
     // (very useful for webkit based browsers where copy will otherwise contain a lot of code and styles based on whatever and not actually in selection).
     // If falsy value is passed source override is also disabled
     copyedFromMarking: '<meta name="copied-from" content="wysihtml5">'

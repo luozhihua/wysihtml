@@ -278,8 +278,9 @@
             }
             if (command.dialog) {
               if (typeof(state) === "object" || wysihtml5.lang.object(state).isArray()) {
+                var autoOpenDialog = this.editor.config.autoOpenDialog !== false;
 
-                if (!command.dialog.multiselect && wysihtml5.lang.object(state).isArray()) {
+                if (autoOpenDialog && (!command.dialog.multiselect && wysihtml5.lang.object(state).isArray())) {
                   // Grab first and only object/element in state array, otherwise convert state into boolean
                   // to avoid showing a dialog for multiple selected elements which may have different attributes
                   // eg. when two links with different href are selected, the state will be an array consisting of both link elements
@@ -289,6 +290,7 @@
                 }
                 command.dialog.show(state);
               } else {
+                command.state = false;
                 command.dialog.hide();
               }
             }
