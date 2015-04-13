@@ -1,1 +1,19 @@
-{"folders":[{"follow_symlinks":true,"file_exclude_patterns":[".fuse_hidden*"],"path":"."}]}
+{
+	"folders":
+	[
+		{
+			"file_exclude_patterns":
+			[
+				".fuse_hidden*"
+			],
+			"follow_symlinks": true,
+			"path": "."
+		}
+	],
+	"settings":
+	{
+		"FuzzyFilePath":
+		{
+		}
+	}
+}
