@@ -1,5 +1,5 @@
 /**
- * @license wysihtml v0.5.1
+ * @license wysihtml v0.5.2
  * https://github.com/Voog/wysihtml
  *
  * Author: Christopher Blum (https://github.com/tiff)
@@ -10,7 +10,7 @@
  *
  */
 var wysihtml5 = {
-  version: "0.5.1",
+  version: "0.5.2",
 
   // namespaces
   commands:   {},
@@ -5724,11 +5724,13 @@ wysihtml5.dom.copyAttributes = function(attributesToCopy) {
   wysihtml5.dom.domNode = function(node) {
     var defaultNodeTypes = [wysihtml5.ELEMENT_NODE, wysihtml5.TEXT_NODE];
 
-    var _isBlankText = function(node) {
-      return node.nodeType === wysihtml5.TEXT_NODE && (/^\s*$/g).test(node.data);
-    };
-
     return {
+
+      is: {
+        emptyTextNode: function() {
+          return node.nodeType === wysihtml5.TEXT_NODE && (/^\s*$/g).test(node.data);
+        }
+      },
 
       // var node = wysihtml5.dom.domNode(element).prev({nodeTypes: [1,3], ignoreBlankTexts: true});
       prev: function(options) {
@@ -5741,7 +5743,7 @@ wysihtml5.dom.copyAttributes = function(attributesToCopy) {
 
         if (
           (!wysihtml5.lang.array(types).contains(prevNode.nodeType)) || // nodeTypes check.
-          (options && options.ignoreBlankTexts && _isBlankText(prevNode)) // Blank text nodes bypassed if set
+          (options && options.ignoreBlankTexts && wysihtml5.dom.domNode(prevNode).is.emptyTextNode()) // Blank text nodes bypassed if set
         ) {
           return wysihtml5.dom.domNode(prevNode).prev(options);
         }
@@ -5760,7 +5762,7 @@ wysihtml5.dom.copyAttributes = function(attributesToCopy) {
 
         if (
           (!wysihtml5.lang.array(types).contains(nextNode.nodeType)) || // nodeTypes check.
-          (options && options.ignoreBlankTexts && _isBlankText(nextNode)) // blank text nodes bypassed if set
+          (options && options.ignoreBlankTexts && wysihtml5.dom.domNode(nextNode).is.emptyTextNode()) // blank text nodes bypassed if set
         ) {
           return wysihtml5.dom.domNode(nextNode).next(options);
         }
@@ -10159,6 +10161,24 @@ wysihtml5.quirks.ensureProperClearing = (function() {
       }
     },
 
+    // Gets all the elements in selection with nodeType
+    // Ignores the elements not belonging to current editable area
+    // If filter is defined nodes must pass the filter function with true to be included in list
+    getOwnNodes: function(nodeType, filter, splitBounds) {
+      var ranges = this.getOwnRanges(),
+          nodes = [];
+      for (var r = 0, rmax = ranges.length; r < rmax; r++) {
+        if (ranges[r]) {
+          if (splitBounds) {
+            ranges[r].splitBoundaries();
+          }
+          nodes = nodes.concat(ranges[r].getNodes(Array.isArray(nodeType) ? nodeType : [nodeType], filter));
+        }
+      }
+
+      return nodes;
+    },
+
     fixRangeOverflow: function(range) {
       if (this.contain && this.contain.firstChild && range) {
         var containment = range.compareNode(this.contain);
@@ -11083,21 +11103,23 @@ wysihtml5.Commands = Base.extend(
     }
   }
 });
-;(function(wysihtml5){
+;(function(wysihtml5) {
+  
+  var nodeOptions = {
+    nodeName: "B",
+    toggle: true
+  };
+  
   wysihtml5.commands.bold = {
     exec: function(composer, command) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "b");
+      wysihtml5.commands.formatInline.exec(composer, command, nodeOptions);
     },
 
     state: function(composer, command) {
-      // element.ownerDocument.queryCommandState("bold") results:
-      // firefox: only <b>
-      // chrome:  <b>, <strong>, <h1>, <h2>, ...
-      // ie:      <b>, <strong>
-      // opera:   <b>, <strong>
-      return wysihtml5.commands.formatInline.state(composer, command, "b");
+      return wysihtml5.commands.formatInline.state(composer, command, nodeOptions);
     }
   };
+
 }(wysihtml5));
 ;(function(wysihtml5) {
   var undef,
@@ -11262,37 +11284,36 @@ wysihtml5.Commands = Base.extend(
   };
 })(wysihtml5);
 ;/**
- * document.execCommand("fontSize") will create either inline styles (firefox, chrome) or use font tags
- * which we don't want
- * Instead we set a css class
+ * Set font size css class
  */
 (function(wysihtml5) {
   var REG_EXP = /wysiwyg-font-size-[0-9a-z\-]+/g;
 
   wysihtml5.commands.fontSize = {
     exec: function(composer, command, size) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "span", "wysiwyg-font-size-" + size, REG_EXP);
+      wysihtml5.commands.formatInline.exec(composer, command, {className: "wysiwyg-font-size-" + size, classRegExp: REG_EXP, toggle: true});
     },
 
     state: function(composer, command, size) {
-      return wysihtml5.commands.formatInline.state(composer, command, "span", "wysiwyg-font-size-" + size, REG_EXP);
+      return wysihtml5.commands.formatInline.state(composer, command, {className: "wysiwyg-font-size-" + size});
     }
   };
 })(wysihtml5);
-;/* In case font size adjustment to any number defined by user is preferred, we cannot use classes and must use inline styles. */
+;/**
+ * Set font size by inline style
+ */
 (function(wysihtml5) {
-  var REG_EXP = /(\s|^)font-size\s*:\s*[^;\s]+;?/gi;
 
   wysihtml5.commands.fontSizeStyle = {
     exec: function(composer, command, size) {
-      size = (typeof(size) == "object") ? size.size : size;
+      size = size.size || size;
       if (!(/^\s*$/).test(size)) {
-        wysihtml5.commands.formatInline.execWithToggle(composer, command, "span", false, false, "font-size:" + size, REG_EXP);
+        wysihtml5.commands.formatInline.exec(composer, command, {styleProperty: "fontSize", styleValue: size});
       }
     },
 
     state: function(composer, command, size) {
-      return wysihtml5.commands.formatInline.state(composer, command, "span", false, false, "font-size", REG_EXP);
+      return wysihtml5.commands.formatInline.state(composer, command, {styleProperty: "fontSize"});
     },
 
     stateValue: function(composer, command) {
@@ -11314,47 +11335,39 @@ wysihtml5.Commands = Base.extend(
   };
 })(wysihtml5);
 ;/**
- * document.execCommand("foreColor") will create either inline styles (firefox, chrome) or use font tags
- * which we don't want
- * Instead we set a css class
+ * Set color css class
  */
 (function(wysihtml5) {
   var REG_EXP = /wysiwyg-color-[0-9a-z]+/g;
 
   wysihtml5.commands.foreColor = {
     exec: function(composer, command, color) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "span", "wysiwyg-color-" + color, REG_EXP);
+      wysihtml5.commands.formatInline.exec(composer, command, {className: "wysiwyg-color-" + color, classRegExp: REG_EXP, toggle: true});
     },
 
     state: function(composer, command, color) {
-      return wysihtml5.commands.formatInline.state(composer, command, "span", "wysiwyg-color-" + color, REG_EXP);
+      return wysihtml5.commands.formatInline.state(composer, command, {className: "wysiwyg-color-" + color});
     }
   };
 })(wysihtml5);
 ;/**
- * document.execCommand("foreColor") will create either inline styles (firefox, chrome) or use font tags
- * which we don't want
- * Instead we set a css class
+ * Sets text color by inline styles
  */
 (function(wysihtml5) {
-  var REG_EXP = /(\s|^)color\s*:\s*[^;\s]+;?/gi;
 
   wysihtml5.commands.foreColorStyle = {
     exec: function(composer, command, color) {
-      var colorVals  = wysihtml5.quirks.styleParser.parseColor((typeof(color) == "object") ? "color:" + color.color : "color:" + color, "color"),
+      var colorVals  = wysihtml5.quirks.styleParser.parseColor("color:" + (color.color || color), "color"),
           colString;
 
       if (colorVals) {
-        colString = "color: rgb(" + colorVals[0] + ',' + colorVals[1] + ',' + colorVals[2] + ');';
-        if (colorVals[3] !== 1) {
-          colString += "color: rgba(" + colorVals[0] + ',' + colorVals[1] + ',' + colorVals[2] + ',' + colorVals[3] + ');';
-        }
-        wysihtml5.commands.formatInline.execWithToggle(composer, command, "span", false, false, colString, REG_EXP);
+        colString = (colorVals[3] !== 1 ? "rgb(" : "rgba(") + colorVals.join(',') + ')';
+        wysihtml5.commands.formatInline.exec(composer, command, {styleProperty: 'color', styleValue: colString, toggle: true});
       }
     },
 
     state: function(composer, command) {
-      return wysihtml5.commands.formatInline.state(composer, command, "span", false, false, "color", REG_EXP);
+      return wysihtml5.commands.formatInline.state(composer, command, {styleProperty: 'color'});
     },
 
     stateValue: function(composer, command, props) {
@@ -11379,26 +11392,24 @@ wysihtml5.Commands = Base.extend(
 
   };
 })(wysihtml5);
-;/* In case background adjustment to any color defined by user is preferred, we cannot use classes and must use inline styles. */
+;/**
+ * Sets text background color by inline styles
+ */
 (function(wysihtml5) {
-  var REG_EXP = /(\s|^)background-color\s*:\s*[^;\s]+;?/gi;
 
   wysihtml5.commands.bgColorStyle = {
     exec: function(composer, command, color) {
-      var colorVals  = wysihtml5.quirks.styleParser.parseColor((typeof(color) == "object") ? "background-color:" + color.color : "background-color:" + color, "background-color"),
+      var colorVals  = wysihtml5.quirks.styleParser.parseColor("background-color:" + (color.color || color), "background-color"),
           colString;
 
       if (colorVals) {
-        colString = "background-color: rgb(" + colorVals[0] + ',' + colorVals[1] + ',' + colorVals[2] + ');';
-        if (colorVals[3] !== 1) {
-          colString += "background-color: rgba(" + colorVals[0] + ',' + colorVals[1] + ',' + colorVals[2] + ',' + colorVals[3] + ');';
-        }
-        wysihtml5.commands.formatInline.execWithToggle(composer, command, "span", false, false, colString, REG_EXP);
+        colString = (colorVals[3] !== 1 ? "rgb(" : "rgba(") + colorVals.join(',') + ')';
+        wysihtml5.commands.formatInline.execWithToggle(composer, command, {styleProperty: 'backgroundColor', styleValue: colString, toggle: true});
       }
     },
 
     state: function(composer, command) {
-      return wysihtml5.commands.formatInline.state(composer, command, "span", false, false, "background-color", REG_EXP);
+      return wysihtml5.commands.formatInline.state(composer, command, {styleProperty: 'backgroundColor'});
     },
 
     stateValue: function(composer, command, props) {
@@ -11873,122 +11884,188 @@ wysihtml5.Commands = Base.extend(
  *   output:
  *      <span>ab|c</span> de|<b>fgh</b>
  */
-(function(wysihtml5) {
-  var // Treat <b> as <strong> and vice versa
-      ALIAS_MAPPING = {
-        "strong": "b",
-        "em":     "i",
-        "b":      "strong",
-        "i":      "em"
-      },
-      htmlApplier = {};
 
-  function _getTagNames(tagName) {
-    var alias = ALIAS_MAPPING[tagName];
-    return alias ? [tagName.toLowerCase(), alias.toLowerCase()] : [tagName.toLowerCase()];
+(function(wysihtml5) {
+
+  var defaultTag = "SPAN",
+      INLINE_ELEMENTS = "b, big, i, small, tt, abbr, acronym, cite, code, dfn, em, kbd, strong, samp, var, a, bdo, br, q, span, sub, sup, button, label, textarea, input, select",
+      queryAliasMap = {
+        "b": "b, strong",
+        "strong": "b, strong",
+        "em": "em, i",
+        "i": "em, i"
+      };
+
+  function isVisibleTextNode(node) {
+    if (node.data && (/[^\s]/g).test(node.data)) {
+      return true;
+    }
+    return false;
   }
 
-  function _getApplier(tagName, className, classRegExp, cssStyle, styleRegExp, container) {
-    var identifier = tagName;
-    
-    if (className) {
-      identifier += ":" + className;
-    }
-    if (cssStyle) {
-      identifier += ":" + cssStyle;
+  function getWrapNode(textNode, options) {
+    var nodeName = options && options.nodeName || defaultTag,
+        element = textNode.ownerDocument.createElement(nodeName);
+
+    // Remove similar classes before applying className
+    if (options.classRegExp) {
+      element.className = element.className.replace(options.classRegExp, "");
     }
 
-    if (!htmlApplier[identifier]) {
-      htmlApplier[identifier] = new wysihtml5.selection.HTMLApplier(_getTagNames(tagName), className, classRegExp, true, cssStyle, styleRegExp, container);
+    if (options.className) {
+      element.classList.add(options.className);
     }
 
-    return htmlApplier[identifier];
+    if (options.styleProperty && typeof options.styleValue !== "undefined") {
+      element.style[wysihtml5.browser.fixStyleKey(options.styleProperty)] = options.styleValue;
+    }
+
+    return element;
+  }
+
+  function formatTextNode(textNode, options) {
+    var wrapNode = getWrapNode(textNode, options);
+
+    textNode.parentNode.insertBefore(wrapNode, textNode);
+    wrapNode.appendChild(textNode);
+  }
+
+  function formatTextRange(range, composer, options) {
+    var wrapNode = getWrapNode(range.endContainer, options);
+
+    range.surroundContents(wrapNode);
+    composer.selection.selectNode(wrapNode);
+  }
+
+  function changeTextNodeWrapper(textNodes, nodeWrapper, options) {
+    console.log('change');
+  }
+
+  // Fetch all textnodes in selection
+  // Empty textnodes are ignored except the one containing text caret
+  function getSelectedTextNodes(selection, splitBounds) {
+    var caretNode = selection.isCollapsed() && selection.getSelectedNode(),
+        textNodes = selection.getOwnNodes([3], function(node) {
+          // Exclude empty nodes except caret node
+          return (!wysihtml5.dom.domNode(node).is.emptyTextNode() || caretNode === node);
+        }, splitBounds);
+
+    return textNodes;
+  }
+
+  function hasSimilarTextNodeWrapper(textNodes, options, container) {
+    for (var i = textNodes.length; i--;) {
+      if (findSimilarTextNodeWrapper(textNodes[i], options, container)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function findSimilarTextNodeWrapper(textNode, options, container) {
+    var node = textNode,
+        similarOptions = correctOptionsForSimilarityCheck (options);
+
+    do {
+      if (node.nodeType === 1 && isSimilarNode(node, similarOptions)) {
+        return node;
+      }
+      node = node.parentNode;
+    } while (node && node !== container);
+
+    return null;
+  }
+
+  function correctOptionsForSimilarityCheck (options) {
+    return {
+      nodeName: options.nodeName || null,
+      className: options.className || null,
+      classRegExp: options.classRegExp || null,
+      styleProperty: options.styleProperty || null
+    };
+  }
+
+  // Finds inline node with similar nodeName/style/className
+  // If nodeName is specified inline node with the same (or alias) nodeName is expected to prove similar
+  function isSimilarNode (node, options) {
+    var o;
+    if (options.nodeName) {
+      var query = queryAliasMap[options.nodeName.toLowerCase()] || options.nodeName.toLowerCase();
+      return wysihtml5.dom.domNode(node).test({ query: query });
+    } else {
+      o = wysihtml5.lang.object(options).clone();
+      o.query = INLINE_ELEMENTS; // make sure only inline elements with styles and classes are counted
+      return wysihtml5.dom.domNode(node).test(options);
+    }
   }
 
   wysihtml5.commands.formatInline = {
-    exec: function(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp, dontRestoreSelect, noCleanup) {
-      var range = composer.selection.createRange(),
-          ownRanges = composer.selection.getOwnRanges();
 
-      if (!ownRanges || ownRanges.length == 0) {
-        return false;
+    // Basics:
+    // In case of plain text or inline state not set wrap all non-empty textnodes with
+    // In case a similar inline wrapper node is detected on one of textnodes, the wrapper node is changed (if fully contained) or split and changed (partially contained)
+    //    In case of changing mode every textnode is addressed separatly
+    exec: function(composer, command, options) {
+      var textNodes = getSelectedTextNodes(composer.selection, true),
+          nodeWrapper, i;
+
+      // If properties is passed as a string, correct options with that nodeName
+      options = (typeof options === "string") ? { nodeName: options.toUpperCase() } : options;
+
+      // Handle collapsed selection caret and return
+      if (!textNodes.length) {
+        formatTextRange(composer.selection.getOwnRanges()[0], composer, options);
+        return;
       }
-      composer.selection.getSelection().removeAllRanges();
 
-      _getApplier(tagName, className, classRegExp, cssStyle, styleRegExp, composer.element).toggleRange(ownRanges);
-
-      if (!dontRestoreSelect) {
-        range.setStart(ownRanges[0].startContainer,  ownRanges[0].startOffset);
-        range.setEnd(
-          ownRanges[ownRanges.length - 1].endContainer,
-          ownRanges[ownRanges.length - 1].endOffset
-        );
-        composer.selection.setSelection(range);
-        composer.selection.executeAndRestore(function() {
-          if (!noCleanup) {
-            composer.cleanUp();
+      if (hasSimilarTextNodeWrapper(textNodes, options, composer.element)) {
+        // Change mode triggered
+        // only similar wrappernodes are changed 
+        for (i = textNodes.length; i--;) {
+          nodeWrapper = findSimilarTextNodeWrapper(textNodes[i], options, composer.element);
+          if (nodeWrapper) {
+            changeTextNodeWrapper(textNodes[i], nodeWrapper, options);
+          } else {
+            formatTextNode(textNodes[i], options);
           }
-        }, true, true);
-      } else if (!noCleanup) {
-        composer.cleanUp();
-      }
-    },
-
-    // Executes so that if collapsed caret is in a state and executing that state it should unformat that state
-    // It is achieved by selecting the entire state element before executing.
-    // This works on built in contenteditable inline format commands
-    execWithToggle: function(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp) {
-      var that = this;
-
-      if (this.state(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp) &&
-        composer.selection.isCollapsed() &&
-        !composer.selection.caretIsLastInSelection() &&
-        !composer.selection.caretIsFirstInSelection()
-      ) {
-        var state_element = that.state(composer, command, tagName, className, classRegExp)[0];
-        composer.selection.executeAndRestoreRangy(function() {
-          var parent = state_element.parentNode;
-          composer.selection.selectNode(state_element, true);
-          wysihtml5.commands.formatInline.exec(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp, true, true);
-        });
+        }
       } else {
-        if (this.state(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp) && !composer.selection.isCollapsed()) {
-          composer.selection.executeAndRestoreRangy(function() {
-            wysihtml5.commands.formatInline.exec(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp, true, true);
-          });
-        } else {
-          wysihtml5.commands.formatInline.exec(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp);
+        // Apply mode
+        for (i = textNodes.length; i--;) {
+          formatTextNode(textNodes[i], options);
         }
       }
+
     },
 
-    state: function(composer, command, tagName, className, classRegExp, cssStyle, styleRegExp) {
-      var doc           = composer.doc,
-          aliasTagName  = ALIAS_MAPPING[tagName] || tagName,
-          ownRanges, isApplied;
+    state: function(composer, command, options) {
+      var searchNodes = getSelectedTextNodes(composer.selection),
+          nodes = [],
+          node, range;
 
-      // Check whether the document contains a node with the desired tagName
-      if (!wysihtml5.dom.hasElementWithTagName(doc, tagName) &&
-          !wysihtml5.dom.hasElementWithTagName(doc, aliasTagName)) {
-        return false;
+      // If properties is passed as a string, correct options with that nodeName
+      options = (typeof options === "string") ? { nodeName: options.toUpperCase() } : options;
+
+
+      // Handle collapsed selection caret
+      if (!searchNodes.length) {
+        range = composer.selection.getOwnRanges()[0];
+        if (range) {
+          searchNodes = [range.endContainer];
+        }
       }
 
-       // Check whether the document contains a node with the desired className
-      if (className && !wysihtml5.dom.hasElementWithClassName(doc, className)) {
-         return false;
+      for (var i = 0, maxi = searchNodes.length; i < maxi; i++) {
+        node = findSimilarTextNodeWrapper(searchNodes[i], options, composer.element);
+        if (node) {
+          nodes.push(node);
+        }
       }
-
-      ownRanges = composer.selection.getOwnRanges();
-
-      if (!ownRanges || ownRanges.length === 0) {
-        return false;
-      }
-
-      isApplied = _getApplier(tagName, className, classRegExp, cssStyle, styleRegExp, composer.element).isAppliedToRange(ownRanges);
-
-      return (isApplied && isApplied.elements) ? isApplied.elements : false;
+      
+      return (nodes.length === 0) ? false : nodes;
     }
   };
+
 })(wysihtml5);
 ;(function(wysihtml5) {
 
@@ -12336,20 +12413,22 @@ wysihtml5.Commands = Base.extend(
 
 })(wysihtml5);
 ;(function(wysihtml5){
+  
+  var nodeOptions = {
+    nodeName: "I",
+    toggle: true
+  };
+
   wysihtml5.commands.italic = {
     exec: function(composer, command) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "i");
+      wysihtml5.commands.formatInline.exec(composer, command, nodeOptions);
     },
 
     state: function(composer, command) {
-      // element.ownerDocument.queryCommandState("italic") results:
-      // firefox: only <i>
-      // chrome:  <i>, <em>, <blockquote>, ...
-      // ie:      <i>, <em>
-      // opera:   only <i>
-      return wysihtml5.commands.formatInline.state(composer, command, "i");
+      return wysihtml5.commands.formatInline.state(composer, command, nodeOptions);
     }
   };
+
 }(wysihtml5));
 ;(function(wysihtml5) {
 
@@ -12492,15 +12571,22 @@ wysihtml5.Commands = Base.extend(
   };
 }(wysihtml5));
 ;(function(wysihtml5){
+
+  var nodeOptions = {
+    nodeName: "U",
+    toggle: true
+  };
+
   wysihtml5.commands.underline = {
     exec: function(composer, command) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "u");
+      wysihtml5.commands.formatInline.exec(composer, command, nodeOptions);
     },
 
     state: function(composer, command) {
-      return wysihtml5.commands.formatInline.state(composer, command, "u");
+      return wysihtml5.commands.formatInline.state(composer, command, nodeOptions);
     }
   };
+
 }(wysihtml5));
 ;(function(wysihtml5){
   wysihtml5.commands.undo = {
@@ -12764,24 +12850,36 @@ wysihtml5.Commands = Base.extend(
   };
 }(wysihtml5));
 ;(function(wysihtml5){
+  
+  var nodeOptions = {
+    nodeName: "SUB",
+    toggle: true
+  };
+
   wysihtml5.commands.subscript = {
     exec: function(composer, command) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "sub");
+      wysihtml5.commands.formatInline.exec(composer, command, nodeOptions);
     },
 
     state: function(composer, command) {
-      return wysihtml5.commands.formatInline.state(composer, command, "sub");
+      return wysihtml5.commands.formatInline.state(composer, command, nodeOptions);
     }
   };
 }(wysihtml5));
-;(function(wysihtml5){
+;(function(wysihtml5) {
+
+	var nodeOptions = {
+    nodeName: "SUP",
+    toggle: true
+  };
+
   wysihtml5.commands.superscript = {
     exec: function(composer, command) {
-      wysihtml5.commands.formatInline.execWithToggle(composer, command, "sup");
+      wysihtml5.commands.formatInline.exec(composer, command, nodeOptions);
     },
 
     state: function(composer, command) {
-      return wysihtml5.commands.formatInline.state(composer, command, "sup");
+      return wysihtml5.commands.formatInline.state(composer, command, nodeOptions);
     }
   };
 }(wysihtml5));
